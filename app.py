@@ -42,67 +42,86 @@ class FastDota2Parser:
                     return None
                 
                 search_result = await response.json()
-                print(f"[DEBUG] Search result: {search_result}")
                 
                 if not search_result.get('success'):
                     print(f"[ASYNC] Search API failed for: {market_hash_name}")
                     return None
                 
-                items = search_result.get('data', [])
+                items = search_result.get('list', [])  # API returns 'list' not 'data'!
                 if not items:
                     print(f"[ASYNC] No items found matching: {market_hash_name}")
                     return None
                 
-                # Get first match
-                first_item = items[0]
+                # The search results contain SELL prices (what buyers pay)
+                # Get lowest sell price (best deal if you're buying)
+                first_item = items[0]  # Already sorted by price ascending
                 exact_name = first_item.get('market_hash_name')
+                classid = first_item.get('i_classid')
+                instanceid = first_item.get('i_instanceid')
+                min_sell_kopeks = first_item.get('price')  # Lowest sell price from search
                 
-                if not exact_name:
-                    print(f"[ASYNC] No market_hash_name in result")
+                if not exact_name or not classid or not instanceid:
+                    print(f"[ASYNC] Missing required fields in result")
                     return None
                 
-                print(f"[ASYNC] Found match: {exact_name}")
+                # For BUY requests, we need to check a different endpoint
+                # Let's use the Buy endpoint to get actual buy offers
+                print(f"[ASYNC] Found: {exact_name}, checking auto-purchase requests...")
             
-            # Step 2: Get price for the exact item
-            price_url = f"{self.base_url}/ItemInfo"
-            price_params = {
-                'key': self.api_key,
-                'market_hash_name': exact_name
-            } if self.api_key else {'market_hash_name': exact_name}
+            # Step 2: Get BUY offers using BuyOffers endpoint (correct API path)
+            buy_url = f"{self.base_url}/BuyOffers/{classid}_{instanceid}"
+            buy_params = {'key': self.api_key} if self.api_key else {}
             
-            async with session.get(price_url, params=price_params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            print(f"[DEBUG] Calling BuyOffers: {buy_url}")
+            print(f"[DEBUG] API Key present: {bool(self.api_key)}")
+            
+            async with session.get(buy_url, params=buy_params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                response_text = await response.text()
+                print(f"[DEBUG] BuyOffers HTTP Status: {response.status}")
+                print(f"[DEBUG] BuyOffers Raw Response: {response_text[:500]}")
+                
                 if response.status != 200:
-                    print(f"[ASYNC] Price fetch failed with HTTP {response.status}")
-                    return None
-                
-                price_result = await response.json()
-                print(f"[DEBUG] Price result: {price_result}")
-                
-                if not price_result.get('success'):
-                    print(f"[ASYNC] Price API failed")
-                    return None
-                
-                item_data = price_result.get('item', {})
-                min_price_str = item_data.get('min')
-                max_price_str = item_data.get('max')
-                
-                if min_price_str:
-                    try:
-                        min_sell_rub = float(min_price_str)
-                        max_buy_rub = float(max_price_str) if max_price_str else min_sell_rub * 0.85
-                        
-                        print(f"[ASYNC] ✓ Success: {exact_name} - Min: {min_sell_rub}₽, Max: {max_buy_rub}₽")
-                        return {
-                            'name': exact_name,
-                            'min_sell_price_rub': min_sell_rub,
-                            'max_buy_price_rub': max_buy_rub
-                        }
-                    except (ValueError, TypeError) as e:
-                        print(f"[ASYNC] Price parse error: {e}")
-                        return None
+                    print(f"[ERROR] BuyOffers failed! Using estimate (90% of sell price)")
+                    # Fallback: use estimate
+                    min_sell_rub = float(min_sell_kopeks) / 100 if min_sell_kopeks else 0
+                    max_buy_rub = min_sell_rub * 0.90
                 else:
-                    print(f"[ASYNC] No price data available")
-                    return None
+                    try:
+                        buy_result = json.loads(response_text)
+                        print(f"[DEBUG] BuyOffers JSON: {json.dumps(buy_result, indent=2)}")
+                    
+                        # Priority: best_offer field (already the highest auto-purchase price)
+                        if buy_result.get('success') and buy_result.get('best_offer'):
+                            max_buy_kopeks = int(buy_result['best_offer'])
+                            max_buy_rub = float(max_buy_kopeks) / 100
+                            offers_count = len(buy_result.get('offers', []))
+                            print(f"[SUCCESS] HIGHEST auto-purchase from best_offer: {max_buy_rub}₽ ({offers_count} total requests)")
+                        elif buy_result.get('success') and buy_result.get('offers'):
+                            # Fallback: calculate from offers array if best_offer missing
+                            buy_offers_list = buy_result['offers']
+                            max_buy_kopeks = max(int(offer.get('o_price', 0)) for offer in buy_offers_list)
+                            max_buy_rub = float(max_buy_kopeks) / 100
+                            print(f"[SUCCESS] Calculated HIGHEST from {len(buy_offers_list)} offers: {max_buy_rub}₽")
+                        else:
+                            # No buy offers exist, use estimate (90% of sell price)
+                            max_buy_rub = (float(min_sell_kopeks) / 100 * 0.90) if min_sell_kopeks else 0
+                            print(f"[WARNING] No auto-purchase requests exist, using estimate: {max_buy_rub}₽")
+                    except Exception as e:
+                        print(f"[ERROR] Failed to parse BuyOffers response: {e}")
+                        min_sell_rub = float(min_sell_kopeks) / 100 if min_sell_kopeks else 0
+                        max_buy_rub = min_sell_rub * 0.90
+                    
+                    min_sell_rub = float(min_sell_kopeks) / 100 if min_sell_kopeks else 0
+                
+                print(f"[RESULT] ✓ {exact_name}")
+                print(f"         Min Sell: {min_sell_rub}₽ (you pay to buy)")
+                print(f"         Max Buy:  {max_buy_rub}₽ (you get when selling to auto-purchase)")
+                
+                return {
+                    'name': exact_name,
+                    'min_sell_price_rub': min_sell_rub,
+                    'max_buy_price_rub': max_buy_rub
+                }
                     
         except asyncio.TimeoutError:
             print(f"[ASYNC] Timeout for: {market_hash_name}")
