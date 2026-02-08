@@ -26,57 +26,85 @@ class FastDota2Parser:
         
     async def get_item_prices_async(self, session, market_hash_name):
         """
-        Get item prices using MassInfo API (optimized)
+        Get item prices - first search by name, then get price data
         Returns: min_sell_price, max_buy_price
         """
         print(f"[ASYNC] Fetching: {market_hash_name}")
         
         try:
-            # Use MassInfo endpoint for all data at once
-            # Parameters: SELL=2 (best sell), BUY=2 (best buy), HISTORY=0, INFO=0
-            url = f"{self.base_url}/MassInfo/2/2/0/0"
-            
-            data = {
-                'list': f"{market_hash_name}"
-            }
-            
+            # Step 1: Search for item by name to get market_hash_name
+            search_url = f"{self.base_url}/SearchItemByName/{market_hash_name}"
             params = {'key': self.api_key} if self.api_key else {}
             
-            async with session.post(url, data=data, params=params, timeout=aiohttp.ClientTimeout(total=15)) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    print(f"[DEBUG] API Response: {result}")  # Debug logging
-                    
-                    if result.get('success') and result.get('results'):
-                        item = result['results'][0]
-                        print(f"[DEBUG] Item data: {item}")  # Debug logging
-                        
-                        # Safely extract sell offers (minimum price)
-                        sell_offers = item.get('sell_offers') if item else None
-                        min_sell_price_kopeks = sell_offers.get('best_offer') if sell_offers else None
-                        
-                        # Safely extract buy offers (maximum buy price)
-                        buy_offers = item.get('buy_offers') if item else None
-                        max_buy_price_kopeks = buy_offers.get('best_offer') if buy_offers else None
-                        
-                        if min_sell_price_kopeks:
-                            min_sell_rub = float(min_sell_price_kopeks) / 100
-                            max_buy_rub = float(max_buy_price_kopeks) / 100 if max_buy_price_kopeks else min_sell_rub * 0.85
-                            
-                            print(f"[ASYNC] Success: {market_hash_name}")
-                            return {
-                                'name': market_hash_name,
-                                'min_sell_price_rub': min_sell_rub,
-                                'max_buy_price_rub': max_buy_rub
-                            }
-                        else:
-                            print(f"[ASYNC] No price data for: {market_hash_name}")
-                    else:
-                        print(f"[ASYNC] API returned no results for: {market_hash_name}")
-                    
+            async with session.get(search_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status != 200:
+                    print(f"[ASYNC] Search failed HTTP {response.status} for: {market_hash_name}")
                     return None
+                    
+                search_result = await response.json()
+                
+                if not search_result.get('success') or not search_result.get('data'):
+                    print(f"[ASYNC] Item not found: {market_hash_name}")
+                    return None
+                
+                # Get first matching item
+                items = search_result['data']
+                if not items:
+                    print(f"[ASYNC] No matches for: {market_hash_name}")
+                    return None
+                    
+                first_item = items[0]
+                item_id = first_item.get('market_hash_name', market_hash_name)
+                
+            # Step 2: Get price info using PriceList endpoint
+            price_url = f"{self.base_url}/PriceList"
+            params = {'key': self.api_key} if self.api_key else {}
+            
+            async with session.get(price_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status != 200:
+                    print(f"[ASYNC] Price fetch failed HTTP {response.status}")
+                    return None
+                    
+                price_result = await response.json()
+                
+                if not price_result.get('success'):
+                    print(f"[ASYNC] Price API failed for: {market_hash_name}")
+                    return None
+                
+                # Find our item in the price list
+                all_items = price_result.get('items', {})
+                item_data = None
+                
+                # Search for item by name (case-insensitive partial match)
+                search_lower = market_hash_name.lower()
+                for item_name, data in all_items.items():
+                    if search_lower in item_name.lower():
+                        item_data = data
+                        item_id = item_name
+                        break
+                
+                if not item_data:
+                    print(f"[ASYNC] No price data for: {market_hash_name}")
+                    return None
+                
+                # Extract prices (in kopeks)
+                min_sell_price_kopeks = item_data.get('min')
+                max_buy_price_kopeks = item_data.get('max')
+                
+                if min_sell_price_kopeks:
+                    min_sell_rub = float(min_sell_price_kopeks) / 100
+                    max_buy_rub = float(max_buy_price_kopeks) / 100 if max_buy_price_kopeks else min_sell_rub * 0.85
+                    
+                    print(f"[ASYNC] Success: {item_id} - Min: {min_sell_rub}₽, Max: {max_buy_rub}₽")
+                    return {
+                        'name': item_id,
+                        'min_sell_price_rub': min_sell_rub,
+                        'max_buy_price_rub': max_buy_rub
+                    }
                 else:
-                    print(f"[ASYNC] HTTP {response.status} for: {market_hash_name}")
+                    print(f"[ASYNC] No price data for: {market_hash_name}")
+                    return None
+                    
         except asyncio.TimeoutError:
             print(f"[ASYNC] Timeout for: {market_hash_name}")
         except Exception as e:
