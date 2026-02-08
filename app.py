@@ -45,9 +45,11 @@ class FastDota2Parser:
             async with session.post(url, data=data, params=params, timeout=aiohttp.ClientTimeout(total=15)) as response:
                 if response.status == 200:
                     result = await response.json()
+                    print(f"[DEBUG] API Response: {result}")  # Debug logging
                     
                     if result.get('success') and result.get('results'):
                         item = result['results'][0]
+                        print(f"[DEBUG] Item data: {item}")  # Debug logging
                         
                         # Safely extract sell offers (minimum price)
                         sell_offers = item.get('sell_offers') if item else None
