@@ -310,10 +310,9 @@ pip install -r requirements.txt
 ```
 
 4. **Configure Web App** (from Web tab)
-   - Add new web app → Manual config → Python 3.11
-   - Set virtualenv: `/home/YOUR_USERNAME/dota2-parser/venv`
+   - Add new web app → Manual config → Python 3.10
+   - Set virtualenv: ``
    - Edit WSGI file (provided in `wsgi.py`)
-   - **Note**: Use Python 3.11 or 3.10, NOT 3.12 (aiohttp compatibility)
 
 5. **Add .env file** with your API key
 

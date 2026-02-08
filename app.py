@@ -49,11 +49,13 @@ class FastDota2Parser:
                     if result.get('success') and result.get('results'):
                         item = result['results'][0]
                         
-                        # Extract sell offers (minimum price)
-                        min_sell_price_kopeks = item.get('sell_offers', {}).get('best_offer')
+                        # Safely extract sell offers (minimum price)
+                        sell_offers = item.get('sell_offers') if item else None
+                        min_sell_price_kopeks = sell_offers.get('best_offer') if sell_offers else None
                         
-                        # Extract buy offers (maximum buy price)
-                        max_buy_price_kopeks = item.get('buy_offers', {}).get('best_offer')
+                        # Safely extract buy offers (maximum buy price)
+                        buy_offers = item.get('buy_offers') if item else None
+                        max_buy_price_kopeks = buy_offers.get('best_offer') if buy_offers else None
                         
                         if min_sell_price_kopeks:
                             min_sell_rub = float(min_sell_price_kopeks) / 100
@@ -65,8 +67,11 @@ class FastDota2Parser:
                                 'min_sell_price_rub': min_sell_rub,
                                 'max_buy_price_rub': max_buy_rub
                             }
+                        else:
+                            print(f"[ASYNC] No price data for: {market_hash_name}")
+                    else:
+                        print(f"[ASYNC] API returned no results for: {market_hash_name}")
                     
-                    print(f"[ASYNC] No results for: {market_hash_name}")
                     return None
                 else:
                     print(f"[ASYNC] HTTP {response.status} for: {market_hash_name}")
