@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dota 2 Market Parser</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .input-section {
+            margin-bottom: 20px;
+        }
+        
+        .input-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .instructions {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #555;
+            font-size: 0.95em;
+        }
+        
+        .instructions ul {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.95em;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .btn-parse {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-parse:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-parse:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .btn-clear {
+            background: #f0f0f0;
+            color: #333;
+            flex: 0.3;
+        }
+        
+        .btn-clear:hover {
+            background: #e0e0e0;
+        }
+        
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .status-loading .spinner {
+            display: block;
+        }
+        
+        .summary-card {
+            background: linear-gradient(135deg, #ff6b9d 0%, #c06c84 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .summary-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        
+        .summary-icon {
+            font-size: 1.3em;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .summary-item {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .summary-item-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        
+        .summary-item-value {
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+        
+        .results-section {
+            display: none;
+        }
+        
+        .results-section.visible {
+            display: block;
+        }
+        
+        .results-title {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        
+        thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        tbody tr:hover {
+            background: #f9f9f9;
+        }
+        
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .item-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .price {
+            font-weight: 600;
+            font-family: 'Monaco', monospace;
+        }
+        
+        .price-rub {
+            color: #e74c3c;
+        }
+        
+        .price-usd {
+            color: #27ae60;
+        }
+        
+        .error-message {
+            background: #fee;
+            color: #c00;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c00;
+        }
+        
+        .success-message {
+            background: #efe;
+            color: #0a0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #0a0;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .empty-state-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+            opacity: 0.3;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            th, td {
+                padding: 10px;
+                font-size: 0.85em;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+            
+            .btn-clear {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💎 Dota 2 Market Parser</h1>
+            <p>Fast & Accurate Item Price Analysis</p>
+        </div>
+        
+        <div class="card input-section">
+            <h2>📝 Item List</h2>
+            
+            <div class="instructions">
+                <strong>✓ How to use:</strong>
+                <ul>
+                    <li>Enter item names (English only, as on market)</li>
+                    <li>One item per line</li>
+                    <li>Example: "Arcana", "Immortal Item", "Courier"</li>
+                </ul>
+            </div>
+            
+            <textarea id="itemsInput" placeholder="Enter item names, one per line...&#10;Example:&#10;Arcana&#10;Immortal Item&#10;Courier"></textarea>
+            
+            <div class="button-group">
+                <button class="btn-parse" id="parseBtn" onclick="parseItems()">
+                    <span class="spinner"></span>
+                    <span id="btnText">Parse Items</span>
+                </button>
+                <button class="btn-clear" onclick="clearInput()">Clear</button>
+            </div>
+        </div>
+        
+        <div id="messageContainer"></div>
+        
+        <div id="resultsContainer" class="results-section">
+            <div class="summary-card" id="summaryCard"></div>
+            
+            <div class="card">
+                <h2 class="results-title">📊 Item Prices</h2>
+                <div class="table-wrapper">
+                    <table id="resultsTable">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Min Price (RUB)</th>
+                                <th>Max BestBuy (RUB)</th>
+                                <th>Min Price (USD)</th>
+                                <th>Max BestBuy (USD)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = '/api';
+        
+        function clearInput() {
+            document.getElementById('itemsInput').value = '';
+            document.getElementById('resultsContainer').classList.remove('visible');
+            document.getElementById('messageContainer').innerHTML = '';
+        }
+        
+        async function parseItems() {
+            const itemsText = document.getElementById('itemsInput').value.trim();
+            
+            if (!itemsText) {
+                showMessage('Please enter at least one item', 'error');
+                return;
+            }
+            
+            const items = itemsText.split('\n').filter(item => item.trim());
+            
+            if (items.length === 0) {
+                showMessage('Please enter at least one item', 'error');
+                return;
+            }
+            
+            // Show loading state
+            const btn = document.getElementById('parseBtn');
+            btn.disabled = true;
+            btn.classList.add('status-loading');
+            document.getElementById('btnText').textContent = 'Parsing...';
+            document.getElementById('messageContainer').innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_BASE}/parse`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ items: itemsText })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    showMessage(data.error || 'Failed to parse items', 'error');
+                    return;
+                }
+                
+                displayResults(data);
+                showMessage(`✓ Successfully parsed ${data.count} items!`, 'success');
+            } catch (error) {
+                showMessage(`Error: ${error.message}`, 'error');
+                console.error('Parse error:', error);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('status-loading');
+                document.getElementById('btnText').textContent = 'Parse Items';
+            }
+        }
+        
+        function displayResults(data) {
+            // Display summary
+            const summary = data.summary;
+            const summaryHtml = `
+                <div class="summary-header">
+                    <span class="summary-icon">💰</span>
+                    <span>Total List Cost</span>
+                </div>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <div class="summary-item-label">Min. Price (RUB)</div>
+                        <div class="summary-item-value">${summary.total_min_sell_rub.toFixed(2)} ₽</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-item-label">BestBuy (RUB)</div>
+                        <div class="summary-item-value">${summary.total_max_buy_rub.toFixed(2)} ₽</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-item-label">Min. Price (USD)</div>
+                        <div class="summary-item-value">$${summary.total_min_sell_usd.toFixed(2)}</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-item-label">BestBuy (USD)</div>
+                        <div class="summary-item-value">$${summary.total_max_buy_usd.toFixed(2)}</div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('summaryCard').innerHTML = summaryHtml;
+            
+            // Display table
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            if (data.items.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: #999;">
+                            No items found
+                        </td>
+                    </tr>
+                `;
+            } else {
+                data.items.forEach(item => {
+                    const row = `
+                        <tr>
+                            <td class="item-name">${escapeHtml(item.name)}</td>
+                            <td class="price price-rub">${item.min_sell_price_rub.toFixed(2)} ₽</td>
+                            <td class="price price-rub">${item.max_buy_price_rub.toFixed(2)} ₽</td>
+                            <td class="price price-usd">$${item.min_sell_price_usd.toFixed(2)}</td>
+                            <td class="price price-usd">$${item.max_buy_price_usd.toFixed(2)}</td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            }
+            
+            document.getElementById('resultsContainer').classList.add('visible');
+        }
+        
+        function showMessage(message, type) {
+            const container = document.getElementById('messageContainer');
+            const className = type === 'error' ? 'error-message' : 'success-message';
+            container.innerHTML = `<div class="${className}">${escapeHtml(message)}</div>`;
+        }
+        
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+        
+        // Allow Enter key in textarea to work
+        document.getElementById('itemsInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                parseItems();
+            }
+        });
+    </script>
+</body>
+</html>
