@@ -1,4 +1,3 @@
-# Import required packages
 from flask import Flask, render_template, request, jsonify
 import aiohttp
 import asyncio
